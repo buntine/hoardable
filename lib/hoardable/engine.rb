@@ -39,6 +39,7 @@ module Hoardable
   SUPPORTS_ENCRYPTED_ACTION_TEXT = ActiveRecord.version >= ::Gem::Version.new("7.0.4")
   private_constant :SUPPORTS_ENCRYPTED_ACTION_TEXT
 
+  @semaphore = Mutex.new
   @context = {}
   @config = CONFIG_KEYS.to_h { |key| [key, true] }
 
@@ -60,14 +61,18 @@ module Hoardable
     #
     # @param hash [Hash] config and contextual data to set within a block
     def with(hash)
-      current_config = @config
-      current_context = @context
-      @config = current_config.merge(hash.slice(*CONFIG_KEYS))
-      @context = current_context.merge(hash.slice(*DATA_KEYS))
-      yield
-    ensure
-      @config = current_config
-      @context = current_context
+      @semaphore.synchronize do
+        begin
+          current_config = @config
+          current_context = @context
+          @config = current_config.merge(hash.slice(*CONFIG_KEYS))
+          @context = current_context.merge(hash.slice(*DATA_KEYS))
+          yield
+        ensure
+          @config = current_config
+          @context = current_context
+        end
+      end
     end
 
     # Allows performing a query for record states at a certain time. Returned {SourceModel}
