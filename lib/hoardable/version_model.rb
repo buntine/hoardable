@@ -6,6 +6,8 @@ module Hoardable
   module VersionModel
     extend ActiveSupport::Concern
 
+    CASCADABLE_REFLECTIONS = [ActiveRecord::Reflection::HasManyReflection, ActiveRecord::Reflection::HasOneReflection]
+
     class_methods do
       # This is needed to allow {FinderMethods} to work with the version class.
       #
@@ -111,6 +113,32 @@ module Hoardable
               untrashed.run_callbacks(:untrashed)
             end
         end
+      end
+    end
+
+    def cascade_untrash!
+      raise(Error, "Version is not trashed, cannot untrash") unless hoardable_operation == "delete"
+
+      transaction do
+        record = untrash!
+
+        dependents = _reflections.select do |_, reflection|
+          CASCADABLE_REFLECTIONS.include?(reflection.class) and\
+            reflection.options[:dependent] == :destroy and\
+            reflection.instance_variable_get(:@cascade_untrash) == true and\
+            Hoardable::REGISTRY.include?(reflection.klass)
+        end
+
+        dependents.each do |name, dep|
+          dep
+            .klass
+            .version_class
+            .trashed
+            .with_hoardable_event_uuid(hoardable_event_uuid)
+            .find_each(&:cascade_untrash!)
+        end
+
+        record
       end
     end
 

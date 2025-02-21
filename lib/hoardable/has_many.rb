@@ -27,9 +27,15 @@ module Hoardable
       def has_many(*args, &block)
         options = args.extract_options!
         hoardable_option = options.delete(:hoardable)
+        cascade_option = options.delete(:untrash)
         options[:extend] = Array(options[:extend]).push(HasManyExtension) if hoardable_option
 
-        super(*args, **options, &block)
+        reflections = super(*args, **options, &block)
+
+        if cascade_option
+          reflections[args.first].instance_variable_set(:@cascade_untrash, true)
+        end
+
         return unless hoardable_option
 
         # This hack is needed to force Rails to not use any existing method cache so that the
